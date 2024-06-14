@@ -1,3 +1,2 @@
 #!/bin/bash
-# Script to change the owner and group owner of the symbolic link _hello
 sudo chown vincent:staff _hello
