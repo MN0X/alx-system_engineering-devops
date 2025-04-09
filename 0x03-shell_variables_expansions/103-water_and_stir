@@ -1,8 +1,2 @@
 #!/bin/bash
-water_base=ewwatratewa
-stir_base=ti.itirtrtr
-bestchol_base=shtbeolhc
-water_decimal=$(echo "$WATER" | tr "$water_base" '0123456789' | bc)
-stir_decimal=$(echo "$STIR" | tr "$stir_base" '0123456789' | bc)
-sum_decimal=$(($water_decimal + $stir_decimal))
-echo "$sum_decimal" | tr '0123456789' "$bestchol_base"
+printf "%o\n" $(( $((5#$(echo $WATER | tr water 01234))) + $((5#$(echo $STIR | tr stir. 01234))) )) | tr 01234567 bestchol
