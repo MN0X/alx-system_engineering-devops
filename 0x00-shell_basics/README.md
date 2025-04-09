@@ -1,2 +1,1 @@
-# alx-system_engineering-devops
-Where am i script
+# 0x00-shell_basics
