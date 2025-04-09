@@ -1,65 +1,43 @@
-# Postmortem
 
-Upon the release of ALX's System Engineering & DevOps project 0x19,
-approximately 06:00 West African Time (WAT) here in Nigeria, an outage occurred on an isolated
-Ubuntu 14.04 container running an Apache web server. GET requests on the server led to
-`500 Internal Server Error`'s, when the expected response was an HTML file defining a
-simple Holberton WordPress site.
+## Postmortem
+
+At approximately 08:45 GMT+1 (Moroccan time), following the deployment of a containerized Node.js application for ALX’s Backend Capstone project, an outage occurred on the production environment. GET requests to the API endpoint `/api/recipes` were met with a 502 Bad Gateway error, contrary to the expected JSON response containing recipe data.
 
 ## Debugging Process
 
-Bug debugger Brennan (BDB... as in my actual initials... made that up on the spot, pretty
-good, huh?) encountered the issue upon opening the project and being, well, instructed to
-address it, roughly 19:20 PST. He promptly proceeded to undergo solving the problem.
+The bug was brought to the attention of lead debugger SlimDev (that's me, the name’s made up but the pain was real) at 11:02 AM after reports came flooding in—by “flooding,” I mean one person pinged me on Slack. Close enough.
 
-1. Checked running processes using `ps aux`. Two `apache2` processes - `root` and `www-data` -
-were properly running.
+1. First, checked if the Node.js app was even alive. Ran `docker ps` — confirmed the container was up. So far, so good.
 
-2. Looked in the `sites-available` folder of the `/etc/apache2/` directory. Determined that
-the web server was serving content located in `/var/www/html/`.
+2. Inspected the logs inside the container using `docker logs [container_id]`. Output showed repeated connection refusals to MongoDB. Not good.
 
-3. In one terminal, ran `strace` on the PID of the `root` Apache process. In another, curled
-the server. Expected great things... only to be disappointed. `strace` gave no useful
-information.
+3. Verified MongoDB was running using `docker ps`. Uh-oh — no container named `mongo` was found. Mystery deepens.
 
-4. Repeated step 3, except on the PID of the `www-data` process. Kept expectations lower this
-time... but was rewarded! `strace` revelead an `-1 ENOENT (No such file or directory)` error
-occurring upon an attempt to access the file `/var/www/html/wp-includes/class-wp-locale.phpp`.
+4. Realized the `docker-compose.yml` file was not configured to spin up the database container. Classic case of “it worked on my machine.”
 
-5. Looked through files in the `/var/www/html/` directory one-by-one, using Vim pattern
-matching to try and locate the erroneous `.phpp` file extension. Located it in the
-`wp-settings.php` file. (Line 137, `require_once( ABSPATH . WPINC . '/class-wp-locale.php' );`).
+5. Started the MongoDB service manually with `docker-compose up -d mongo`. Checked logs again. Now the Node app was screaming about authentication failures. Of course.
 
-6. Removed the trailing `p` from the line.
+6. Looked at the `config.js` file and compared it to the `docker-compose` secrets. Found the culprit: the environment variable `MONGO_URI` had a typo — written as `MONG_URI`. That one missing ‘O’ cost me 45 minutes.
 
-7. Tested another `curl` on the server. 200 A-ok!
+7. Fixed the environment variable, rebuilt the containers with `docker-compose down && docker-compose up -d --build`.
 
-8. Wrote a Puppet manifest to automate fixing of the error.
+8. Curled the endpoint one more time. Boom — JSON came back like a champ. Crisis averted.
 
 ## Summation
 
-In short, a typo. Gotta love'em. In full, the WordPress app was encountering a critical
-error in `wp-settings.php` when tyring to load the file `class-wp-locale.phpp`. The correct
-file name, located in the `wp-content` directory of the application folder, was
-`class-wp-locale.php`.
+This was a two-parter:  
+- Missing database container.  
+- Typo in an environment variable.
 
-Patch involved a simple fix on the typo, removing the trailing `p`.
+Both classic rookie mistakes, both easily preventable, and both now permanently seared into my memory.
 
 ## Prevention
 
-This outage was not a web server error, but an application error. To prevent such outages
-moving forward, please keep the following in mind.
+Here’s how to avoid this mini-drama in the future:
 
-* Test! Test test test. Test the application before deploying. This error would have arisen
-and could have been addressed earlier had the app been tested.
+- **Automated Testing**: Write integration tests that hit endpoints and verify database connectivity before deployment.
+- **Linter + Env Checker**: Use tools like `dotenv-linter` or a custom script to verify environment variables before startup.
+- **Monitoring**: Add basic logging and status healthchecks to the app and monitor via tools like PM2 or UptimeRobot.
+- **Team Rituals**: Mandate a dry-run of `docker-compose up` before pushing to production.
 
-* Status monitoring. Enable some uptime-monitoring service such as
-[UptimeRobot](./https://uptimerobot.com/) to alert instantly upon outage of the website.
-
-Note that in response to this error, I wrote a Puppet manifest
-[0-strace_is_your_friend.pp](https://github.com/bdbaraban/holberton-system_engineering-devops/blob/master/0x17-web_stack_debugging_3/0-strace_is_your_friend.pp)
-to automate fixing of any such identitical errors should they occur in the future. The manifest
-replaces any `phpp` extensions in the file `/var/www/html/wp-settings.php` with `php`.
-
-But of course, it will never occur again, because we're programmers, and we never make
-errors! :wink:
+Oh, and always double-check your variables. Because MONG_URI isn’t just a typo—it’s a vibe killer.  
